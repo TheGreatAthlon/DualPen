@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "lib": ["ES2023", "DOM"],
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* monaco-editor's package.json#exports maps the deep editor.api subpath
+       to its .js file with no "types" condition, so bundler resolution
+       can't find the sibling .d.ts on its own — map it explicitly instead
+       of importing the package root, which would pull in every language's
+       tokenizer/LSP registration for a plaintext-only editor. */
+    "paths": {
+      "monaco-editor/editor/editor.api.js": ["./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+    },
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

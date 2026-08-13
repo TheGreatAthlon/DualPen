@@ -1,0 +1,13 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+pycrdt==0.14.2
+pycrdt-websocket==0.16.4
+websockets==17.0.1
+argon2-cffi==25.1.0
+SQLAlchemy==2.0.52
+aiosqlite==0.22.1
+python-multipart==0.0.20
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

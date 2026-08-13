@@ -1,0 +1,545 @@
+:root {
+  --text: #1f2028;
+  --text-h: #08060d;
+  --bg: #fff;
+  --pane-bg: #fafafa;
+  --border: #e5e4e7;
+  --accent: #7c3aed;
+  --accent-bg: rgba(124, 58, 237, 0.1);
+  --focus: #2563eb;
+
+  font: 16px/1.45 system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e5e7eb;
+    --text-h: #f9fafb;
+    --bg: #16171d;
+    --pane-bg: #1c1d24;
+    --border: #33343d;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --focus: #60a5fa;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+button {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:focus-visible,
+[role="treeitem"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* --- Login screen --- */
+
+.login-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#login-form h1 {
+  margin: 0 0 16px;
+  font-size: 22px;
+}
+
+#login-form input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+#login-form button {
+  margin-top: 8px;
+}
+
+#login-error {
+  color: #dc2626;
+  min-height: 1.2em;
+  margin: 8px 0 0;
+}
+
+/* --- App shell --- */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+#tree-pane {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--pane-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.tree-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tree-toolbar button {
+  flex: 1 1 auto;
+  min-width: 72px;
+  font-size: 13px;
+}
+
+.tree-toolbar-secondary {
+  border-bottom: none;
+  padding-top: 0;
+}
+
+.tree-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#delete-btn {
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+#delete-btn:disabled {
+  color: var(--text-h);
+  border-color: var(--border);
+}
+
+.tree-move-status {
+  margin: 0;
+  padding: 0 8px 8px;
+  font-size: 12px;
+  opacity: 0.75;
+  min-height: 1em;
+}
+
+#tree-container {
+  flex: 1;
+  overflow: auto;
+  padding: 4px;
+}
+
+/* --- Tree widget --- */
+
+ul.file-tree,
+.file-tree ul[role="group"] {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.file-tree ul[role="group"] {
+  padding-left: 18px;
+}
+
+.file-tree [role="treeitem"] {
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.file-tree [role="treeitem"]:hover {
+  background: var(--accent-bg);
+}
+
+.file-tree [role="treeitem"][aria-selected="true"] {
+  background: var(--accent-bg);
+  font-weight: 600;
+}
+
+.file-tree [role="treeitem"][aria-expanded]::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 1em;
+  margin-right: 2px;
+  transition: transform 0.1s ease;
+}
+
+.file-tree [role="treeitem"][aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.tree-label {
+  pointer-events: none;
+}
+
+.tree-empty {
+  padding: 3px 6px;
+  opacity: 0.6;
+  font-style: italic;
+  font-size: 13px;
+}
+
+.tree-marked-for-move {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
+/* --- Rename dialog --- */
+
+.rename-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.rename-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.rename-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 320px;
+  padding: 20px;
+}
+
+.rename-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.rename-dialog input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.rename-dialog-error {
+  color: #dc2626;
+  min-height: 1.2em;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rename-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* --- Editor pane --- */
+
+#editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+#save-status {
+  color: var(--text);
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+#tab-focus-indicator {
+  font-size: 12px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* --- Chat --- */
+
+.chat-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  width: min(480px, 90vw);
+  height: min(560px, 80vh);
+}
+
+/* Scoped to [open] so this doesn't override the UA stylesheet's
+   dialog:not([open]) { display: none } rule - an unconditional `display:
+   flex` on the bare class has higher specificity than that type-selector
+   rule and would keep the dialog visibly laid out even after .close(). */
+.chat-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.chat-dialog h2 {
+  margin: 0;
+  padding: 16px 20px 8px;
+  font-size: 16px;
+}
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-message {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.chat-message-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.chat-message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-compose {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+}
+
+.chat-compose input {
+  flex: 1;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.chat-quick-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  background: var(--bg);
+  width: min(420px, 90vw);
+}
+
+.chat-quick-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.chat-quick-dialog input {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#editor-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Settings --- */
+
+.settings-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  width: min(420px, 90vw);
+  max-height: 80vh;
+}
+
+.settings-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* Scoped to [open], not the bare class - see the equivalent note on
+   .chat-dialog[open]: an unconditional `display` here would override the UA
+   stylesheet's dialog:not([open]) { display: none } rule and leave the
+   dialog visibly laid out even after .close(). */
+.settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-dialog h2 {
+  margin: 0;
+  padding: 16px 20px 4px;
+  font-size: 16px;
+}
+
+.settings-section {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.settings-row select,
+.settings-row input[type="number"] {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.settings-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-stepper input[type="number"] {
+  width: 56px;
+  text-align: center;
+}
+
+.settings-stepper button {
+  width: 28px;
+  padding: 4px 0;
+}
+
+.settings-font-preview {
+  margin: 8px 0 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--pane-bg);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.settings-buttons {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
