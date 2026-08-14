@@ -299,18 +299,21 @@ export class FileTree {
     switch (e.key) {
       case "ArrowDown": {
         e.preventDefault();
+        this.resetTypeahead();
         const next = visible[index + 1];
         if (next?.dataset.nodeId) this.setActive(next.dataset.nodeId);
         break;
       }
       case "ArrowUp": {
         e.preventDefault();
+        this.resetTypeahead();
         const prev = visible[index - 1];
         if (prev?.dataset.nodeId) this.setActive(prev.dataset.nodeId);
         break;
       }
       case "ArrowRight": {
         e.preventDefault();
+        this.resetTypeahead();
         if (node.kind === "folder") {
           if (!this.expanded.has(nodeId)) {
             this.toggleExpanded(nodeId);
@@ -323,6 +326,7 @@ export class FileTree {
       }
       case "ArrowLeft": {
         e.preventDefault();
+        this.resetTypeahead();
         if (node.kind === "folder" && this.expanded.has(nodeId)) {
           this.toggleExpanded(nodeId);
         } else {
@@ -334,18 +338,21 @@ export class FileTree {
       }
       case "Home": {
         e.preventDefault();
+        this.resetTypeahead();
         const first = visible[0];
         if (first?.dataset.nodeId) this.setActive(first.dataset.nodeId);
         break;
       }
       case "End": {
         e.preventDefault();
+        this.resetTypeahead();
         const last = visible[visible.length - 1];
         if (last?.dataset.nodeId) this.setActive(last.dataset.nodeId);
         break;
       }
       case "Enter": {
         e.preventDefault();
+        this.resetTypeahead();
         if (node.kind === "document") {
           this.callbacks.onSelectDocument(node);
         } else {
@@ -397,6 +404,15 @@ export class FileTree {
     }
   }
 
+  /** Clears any in-progress type-ahead search. Called by every navigation/
+   * action key that isn't itself part of a type-ahead sequence (arrows,
+   * Home/End, Enter) so a stale buffer from an earlier search never gets
+   * silently appended to after focus has moved for an unrelated reason. */
+  private resetTypeahead(): void {
+    this.typeaheadBuffer = "";
+    this.typeaheadLastKeyAt = 0;
+  }
+
   /** W3C APG tree "type-ahead": typing a printable character moves focus to
    * the next visible item whose name starts with it (wrapping around, and
    * starting the search just after the current item so repeated presses of
@@ -420,7 +436,17 @@ export class FileTree {
       this.typeaheadBuffer.length > 1 &&
       this.typeaheadBuffer.split("").every((c) => c === this.typeaheadBuffer[0]);
     const query = isRepeatedSingleChar ? this.typeaheadBuffer[0] : this.typeaheadBuffer;
-    const searchOffset = isRepeatedSingleChar ? 1 : 0;
+    // A single-character query always searches starting just *after* the
+    // current item, even on the very first keystroke of a fresh sequence -
+    // otherwise, when the currently active item already starts with that
+    // letter, the search would match it immediately and appear to do
+    // nothing, while a moment later the "repeated" cycling path (which does
+    // offset) would correctly advance - the same keystroke behaving
+    // differently depending on where focus happened to already be. A
+    // multi-character query (e.g. "er") is a refinement of an
+    // already-in-progress search and searches from the current position, so
+    // it can keep matching the same item if it still fits the longer prefix.
+    const searchOffset = query.length === 1 ? 1 : 0;
 
     const n = visible.length;
     for (let i = 1; i <= n; i++) {
