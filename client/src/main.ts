@@ -774,6 +774,12 @@ window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!currentSync) return;
 
+  // The file tree has its own F2 handler (rename) scoped to its treeitems;
+  // when focus is there, this global handler must stand down instead of
+  // also popping the chat composer/panel on the same keypress.
+  const treeContainer = document.querySelector<HTMLElement>("#tree-container");
+  if (treeContainer?.contains(document.activeElement)) return;
+
   e.preventDefault();
   if (e.shiftKey) {
     chatPanel?.openFocused();
