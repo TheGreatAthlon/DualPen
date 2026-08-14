@@ -33,3 +33,4 @@ server_data/config.toml
 .idea/
 .DS_Store
 Thumbs.db
+create-user.ps1
