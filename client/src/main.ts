@@ -18,7 +18,13 @@ import {
 } from "./presence-sounds";
 import { CollaboratorCycler } from "./jump-to-collaborator";
 import { ChatPanel, QuickComposer } from "./chat";
-import { SettingsPanel, loadAccessibilitySupportPref, loadFontFamily, loadFontSize } from "./settings";
+import {
+  SettingsPanel,
+  applyAccessibilitySupportBodyClass,
+  loadAccessibilitySupportPref,
+  loadFontFamily,
+  loadFontSize,
+} from "./settings";
 
 const TRASH_FOLDER_NAME = "Trash";
 // Idle threshold after the last keystroke before a peer's isTyping flips back
@@ -58,7 +64,7 @@ function renderLogin(): void {
   app.innerHTML = `
     <main class="login-screen">
       <form id="login-form" aria-label="Log in">
-        <h1>Collab Editor</h1>
+        <h1>DualPen</h1>
         <label for="username">Username</label>
         <input id="username" name="username" type="text" autocomplete="username" required />
         <label for="password">Password</label>
@@ -393,7 +399,7 @@ async function renderApp(): Promise<void> {
   app.innerHTML = `
     <div class="app-shell">
       <header class="app-header">
-        <h1>Collab Editor</h1>
+        <h1>DualPen</h1>
         <div class="header-right">
           <span id="user-info"></span>
           <button id="logout-btn" type="button">Log out</button>
@@ -699,4 +705,5 @@ async function init(): Promise<void> {
   }
 }
 
+applyAccessibilitySupportBodyClass(loadAccessibilitySupportPref());
 void init();

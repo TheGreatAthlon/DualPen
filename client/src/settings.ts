@@ -23,12 +23,22 @@ export const FONT_CHOICES: { label: string; family: string }[] = [
 
 const DEFAULT_FONT_FAMILY = FONT_CHOICES[0].family;
 
+const A11Y_SUPPORT_BODY_CLASS = "a11y-support-on";
+
 export function loadAccessibilitySupportPref(): boolean {
   return window.localStorage.getItem(A11Y_SUPPORT_STORAGE_KEY) === "on";
 }
 
 export function saveAccessibilitySupportPref(on: boolean): void {
   window.localStorage.setItem(A11Y_SUPPORT_STORAGE_KEY, on ? "on" : "off");
+}
+
+// Mirrors the pref onto <body> as a class so CSS can react to it directly
+// (e.g. hiding decorative-only visuals like the tree's expand/collapse
+// arrow glyph, which is redundant with aria-expanded for screen reader
+// users and just visual clutter/inconsistent-rendering risk for them).
+export function applyAccessibilitySupportBodyClass(on: boolean): void {
+  document.body.classList.toggle(A11Y_SUPPORT_BODY_CLASS, on);
 }
 
 export function loadFontFamily(): string {
@@ -140,6 +150,7 @@ export class SettingsPanel {
     a11yToggle.checked = loadAccessibilitySupportPref();
     a11yToggle.addEventListener("change", () => {
       saveAccessibilitySupportPref(a11yToggle.checked);
+      applyAccessibilitySupportBodyClass(a11yToggle.checked);
       callbacks.onAccessibilitySupportChange(a11yToggle.checked);
     });
 

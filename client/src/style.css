@@ -231,7 +231,10 @@ ul.file-tree,
   font-weight: 600;
 }
 
-.file-tree [role="treeitem"][aria-expanded]::before {
+/* Decorative only - aria-expanded already conveys expand/collapse state to
+   assistive tech, so this glyph is hidden entirely in screen reader
+   optimized mode rather than left as pure visual noise. */
+body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded]::before {
   content: "\25B8";
   display: inline-block;
   width: 1em;
@@ -239,7 +242,7 @@ ul.file-tree,
   transition: transform 0.1s ease;
 }
 
-.file-tree [role="treeitem"][aria-expanded="true"]::before {
+body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded="true"]::before {
   transform: rotate(90deg);
 }
 
