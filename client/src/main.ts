@@ -305,12 +305,20 @@ async function deleteToTrash(node: NodeOut): Promise<void> {
   if (!fileTree) return;
 
   const trash = fileTree.findRootFolderByName(TRASH_FOLDER_NAME);
-  if (trash && fileTree.isDescendantOfNode(node.id, trash.id)) {
-    announce(`${node.name} is already in Trash and cannot be deleted again.`);
-    return;
+  const inTrash = !!trash && fileTree.isDescendantOfNode(node.id, trash.id);
+
+  if (inTrash) {
+    await deletePermanently(node);
+  } else {
+    await moveToTrash(node);
   }
+}
+
+async function moveToTrash(node: NodeOut): Promise<void> {
+  if (!fileTree) return;
 
   try {
+    const trash = fileTree.findRootFolderByName(TRASH_FOLDER_NAME);
     const trashId = trash ? trash.id : (await api.createFolder(TRASH_FOLDER_NAME, null)).id;
 
     const pathPrefix = fileTree.getAncestorPath(node.id).join("-");
@@ -334,6 +342,35 @@ async function deleteToTrash(node: NodeOut): Promise<void> {
   } catch (err) {
     const message = err instanceof api.ApiError ? err.message : "Delete failed";
     announce(`Could not delete ${node.name}: ${message}`);
+  }
+}
+
+async function deletePermanently(node: NodeOut): Promise<void> {
+  if (!fileTree) return;
+
+  if (node.kind !== "folder" || !fileTree.isEmptyFolder(node.id)) {
+    announce(
+      node.kind !== "folder"
+        ? `Cannot permanently delete ${node.name}: files cannot be deleted, only moved to Trash.`
+        : `Cannot permanently delete ${node.name}: only empty folders can be permanently deleted.`,
+    );
+    return;
+  }
+
+  try {
+    if (currentDocument && fileTree.isDescendantOfNode(currentDocument.id, node.id)) {
+      currentDocument = null;
+      const titleEl = document.querySelector<HTMLElement>("#editor-title");
+      if (titleEl) titleEl.textContent = "No document open";
+      clearEditor("");
+    }
+
+    await api.deleteNode(node.id);
+    await refreshTree();
+    announce(`Permanently deleted ${node.name}.`);
+  } catch (err) {
+    const message = err instanceof api.ApiError ? err.message : "Delete failed";
+    announce(`Could not permanently delete ${node.name}: ${message}`);
   }
 }
 
@@ -379,7 +416,8 @@ function updateTreeToolbar(active: NodeOut | null, markedForMove: NodeOut | null
   pasteBtn.disabled = !moving || !active;
   cancelBtn.hidden = !moving;
   deleteBtn.hidden = moving;
-  deleteBtn.disabled = !active || activeInTrash;
+  deleteBtn.disabled = !active;
+  deleteBtn.textContent = activeInTrash ? "Delete permanently" : "Delete";
   exportSelectedBtn.disabled = !active || moving;
 
   // Only touch the live region's text on an actual moving-state transition

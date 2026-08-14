@@ -79,6 +79,10 @@ async def delete_node(node_id: str, db: AsyncSession = Depends(get_db)):
         await node_service.delete_node(db, node_id)
     except node_service.NodeNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except node_service.NotAFolderError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except node_service.NotEmptyError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/documents/{node_id}/chat", response_model=list[ChatMessageOut])

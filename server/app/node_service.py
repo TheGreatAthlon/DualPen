@@ -20,6 +20,14 @@ class CycleError(Exception):
     pass
 
 
+class NotAFolderError(Exception):
+    pass
+
+
+class NotEmptyError(Exception):
+    pass
+
+
 async def _get_node(db: AsyncSession, node_id: str) -> Node:
     result = await db.execute(select(Node).where(Node.id == node_id))
     node = result.scalar_one_or_none()
@@ -134,25 +142,15 @@ async def update_node(
     return node
 
 
-async def _collect_descendants(db: AsyncSession, node_id: str) -> list[Node]:
-    result = await db.execute(select(Node).where(Node.parent_id == node_id))
-    children = list(result.scalars().all())
-    all_descendants = list(children)
-    for child in children:
-        all_descendants.extend(await _collect_descendants(db, child.id))
-    return all_descendants
-
-
 async def delete_node(db: AsyncSession, node_id: str) -> None:
     node = await _get_node(db, node_id)
-    descendants = await _collect_descendants(db, node_id)
 
-    for descendant in descendants:
-        if descendant.kind == "document" and descendant.blob_path:
-            docstore.delete_document(descendant.blob_path)
-        await db.delete(descendant)
+    if node.kind != "folder":
+        raise NotAFolderError("only folders can be permanently deleted")
 
-    if node.kind == "document" and node.blob_path:
-        docstore.delete_document(node.blob_path)
+    result = await db.execute(select(Node.id).where(Node.parent_id == node_id).limit(1))
+    if result.scalar_one_or_none() is not None:
+        raise NotEmptyError("folder is not empty")
+
     await db.delete(node)
     await db.commit()

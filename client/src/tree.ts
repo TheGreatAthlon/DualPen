@@ -236,6 +236,15 @@ export class FileTree {
     return this.isDescendantOf(nodeId, ancestorId) || nodeId === ancestorId;
   }
 
+  isEmptyFolder(nodeId: string): boolean {
+    const node = this.nodesById.get(nodeId);
+    if (!node || node.kind !== "folder") return false;
+    for (const candidate of this.nodesById.values()) {
+      if (candidate.parent_id === nodeId) return false;
+    }
+    return true;
+  }
+
   findRootFolderByName(name: string): NodeOut | null {
     for (const node of this.nodesById.values()) {
       if (node.kind === "folder" && node.parent_id === null && node.name === name) return node;

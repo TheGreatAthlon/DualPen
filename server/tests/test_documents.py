@@ -215,28 +215,9 @@ async def test_patch_404_for_missing_node(user_client):
     assert resp.status_code == 404
 
 
-async def test_delete_document_removes_blob(user_client):
-    resp = await user_client.post("/api/documents", json={"name": "doc.txt", "parent_id": None})
-    node_id = resp.json()["id"]
-
-    resp = await user_client.delete(f"/api/nodes/{node_id}")
-    assert resp.status_code == 204
-
-    resp = await user_client.get(f"/api/documents/{node_id}/content")
-    assert resp.status_code == 404
-
-
-async def test_delete_folder_cascades_to_children(user_client):
+async def test_delete_empty_folder_succeeds(user_client):
     folder_resp = await user_client.post("/api/folders", json={"name": "Folder", "parent_id": None})
     folder_id = folder_resp.json()["id"]
-    doc_resp = await user_client.post("/api/documents", json={"name": "doc.txt", "parent_id": folder_id})
-    doc_id = doc_resp.json()["id"]
-    subfolder_resp = await user_client.post("/api/folders", json={"name": "Sub", "parent_id": folder_id})
-    subfolder_id = subfolder_resp.json()["id"]
-    subdoc_resp = await user_client.post(
-        "/api/documents", json={"name": "subdoc.txt", "parent_id": subfolder_id}
-    )
-    subdoc_id = subdoc_resp.json()["id"]
 
     resp = await user_client.delete(f"/api/nodes/{folder_id}")
     assert resp.status_code == 204
@@ -244,12 +225,32 @@ async def test_delete_folder_cascades_to_children(user_client):
     resp = await user_client.get("/api/tree")
     remaining_ids = {n["id"] for n in resp.json()}
     assert folder_id not in remaining_ids
-    assert doc_id not in remaining_ids
-    assert subfolder_id not in remaining_ids
-    assert subdoc_id not in remaining_ids
+
+
+async def test_delete_nonempty_folder_rejected(user_client):
+    folder_resp = await user_client.post("/api/folders", json={"name": "Folder", "parent_id": None})
+    folder_id = folder_resp.json()["id"]
+    doc_resp = await user_client.post("/api/documents", json={"name": "doc.txt", "parent_id": folder_id})
+    doc_id = doc_resp.json()["id"]
+
+    resp = await user_client.delete(f"/api/nodes/{folder_id}")
+    assert resp.status_code == 400
+
+    resp = await user_client.get("/api/tree")
+    remaining_ids = {n["id"] for n in resp.json()}
+    assert folder_id in remaining_ids
+    assert doc_id in remaining_ids
+
+
+async def test_delete_document_rejected(user_client):
+    doc_resp = await user_client.post("/api/documents", json={"name": "doc.txt", "parent_id": None})
+    doc_id = doc_resp.json()["id"]
+
+    resp = await user_client.delete(f"/api/nodes/{doc_id}")
+    assert resp.status_code == 400
 
     resp = await user_client.get(f"/api/documents/{doc_id}/content")
-    assert resp.status_code == 404
+    assert resp.status_code == 200
 
 
 async def test_delete_404_for_missing_node(user_client):
