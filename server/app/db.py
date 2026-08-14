@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -13,6 +14,21 @@ DATABASE_URL = os.environ.get("COLLAB_EDITOR_DATABASE_URL", f"sqlite+aiosqlite:/
 
 engine = create_async_engine(DATABASE_URL)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, connection_record) -> None:
+    # WAL lets readers proceed without blocking on a writer (and vice versa),
+    # which matters here since multiple users hit the DB while others are
+    # mid-edit. synchronous=NORMAL is the standard pairing with WAL: full
+    # durability across app/OS crashes, only risking the last transaction or
+    # two on a full power-loss - the accepted tradeoff for WAL deployments.
+    # Both are per-connection PRAGMAs, so this must run on every new pooled
+    # connection, not just once at startup.
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 
 class Base(DeclarativeBase):

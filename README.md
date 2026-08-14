@@ -1,22 +1,32 @@
-# Collaborative Accessible Text Editor
+# DualPen
 
 A self-hosted, real-time collaborative plaintext editor built to be fully keyboard- and
 screen-reader-accessible, so blind and sighted collaborators can edit documents together.
 
 ## Features
 
-- Real-time collaborative editing (Yjs CRDT sync over WebSocket), with remote cursor
-  rendering and a "one document open per user" rule enforced server-side.
-- Presence sounds and a jump-to-collaborator shortcut, designed for non-visual awareness
-  of where collaborators are relative to your own cursor.
-- Persistent per-document chat (F2 quick-send, Shift+F2 for the full panel).
-- A file tree with full keyboard navigation (arrow keys, type-ahead, move/rename/delete),
-  built to the W3C APG tree pattern.
-- Per-user accessibility mode, font, and presence-sound settings.
-- Zip import (creates a labeled subfolder and recreates the archive's structure) and
-  zip export (whole tree or a selected folder).
+- Real-time collaborative editing (Yjs CRDT sync over WebSocket), with remote cursor rendering
+- Presence sounds (typing on your line, typing elsewhere, peers joining/leaving, and a
+  chat-message notification) plus a jump-to-collaborator shortcut (`Alt+J`), designed for
+  non-visual awareness of collaborators relative to your own cursor. An always-visible
+  "Editing with: ..." list in the editor toolbar shows who else has the document open.
+- Persistent per-document chat: `F2` for a quick single-line composer, `Shift+F2` for the
+  full panel, plus a paginated REST history endpoint. Server stores the chat history.
+- A "who's online" roster (`Alt+W` or the toolbar button) showing everyone connected app-wide and what document they're editing
+- Markdown preview (`Alt+R`) — renders the current document's source as sanitized HTML in
+  a modal.
+- A file tree with full keyboard navigation and standard shortcuts. Move, rename and delete files and folders. Deleting moves an item
+  into an auto-created root "Trash" folder. Deleting an empty folder from trash permanently removes it. You can't delete files or non-empty folders, so no chance to lose data through deleting.
+- An in-app shortcut reference (`F1` / `Alt+F1`) listing every shortcut across the editor
+  and file tree — see [`client/src/shortcuts-help.ts`](client/src/shortcuts-help.ts) for
+  the authoritative list.
+- Per-user accessibility mode (on by default for new users), editor font/size, and
+  presence-sound mute/volume settings, all in one Settings dialog.
+- Zip import and export, so you can easily migrate documents to or from DualPen
 - Server-wide AES-256-GCM encryption at rest for document content, argon2id-hashed
-  passwords, and admin-managed accounts (no self-signup).
+  passwords, and admin-managed accounts (no self-signup) with list/create/update
+  (rename, reset password, toggle admin/active) and deactivate (soft-delete) endpoints.
+- Encrypted backup support
 
 ## Stack
 
@@ -110,11 +120,67 @@ point these somewhere else instead (e.g. a separate data volume), set:
 | `COLLAB_EDITOR_DATABASE_URL` | `sqlite+aiosqlite:///<repo>/server_data/db/app.db` |
 | `COLLAB_EDITOR_DOCSTORE_PATH` | `<repo>/server_data/docstore` |
 | `COLLAB_EDITOR_MASTER_KEY_PATH` | `<repo>/server_data/master.key` |
+| `COLLAB_EDITOR_BACKUP_PATH` | `<repo>/backups` |
 
 **The master encryption key is generated automatically** the first time anything is
 encrypted or decrypted — there's no manual key-generation step. **Back this file up.**
 Every document is encrypted at rest with it; if it's lost, encrypted documents on disk
 are unrecoverable. It's written with `0600` permissions on Linux.
+
+The SQLite database runs in WAL mode (set automatically on every connection, see
+`server/app/db.py`), so reads aren't blocked by concurrent writes — the right default for
+several people editing at once. This doesn't replace backups on its own.
+
+**Back up the database, document store, and encryption key together** — a backup of any
+one of these three without the other two is useless, since the blobs in `docstore/` are
+unreadable without both the database (which maps documents to blob files) and the key
+(which decrypts them). Run this manually or from a timer:
+
+```bash
+.venv/bin/python -m server.cli backup --keep 14
+```
+
+This writes a single timestamped `.tar.gz` archive (containing `db/`, `docstore/`, and
+`master.key`) into `COLLAB_EDITOR_BACKUP_PATH` (or `--dest` to override per-run), and with
+`--keep N` deletes older archives beyond the N most recent. It uses SQLite's online backup
+API, so it's safe to run against a live database without stopping the service.
+
+To automate it, add a systemd timer alongside the main service unit below:
+
+`/etc/systemd/system/collab-editor-backup.service`:
+
+```ini
+[Unit]
+Description=Collab Editor backup
+
+[Service]
+Type=oneshot
+User=collab-editor
+WorkingDirectory=/opt/collab-editor
+ExecStart=/opt/collab-editor/.venv/bin/python -m server.cli backup --keep 14
+```
+
+`/etc/systemd/system/collab-editor-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily Collab Editor backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now collab-editor-backup.timer
+```
+
+**To restore:** stop the service, extract the archive's `db/app.db`, `docstore/`, and
+`master.key` into `server_data/` (overwriting what's there), then restart.
 
 Create the first admin account (interactive — do this over your SSH session, not
 scripted, since it prompts for username/display name/password):
@@ -124,7 +190,10 @@ scripted, since it prompts for username/display name/password):
 ```
 
 Additional users are created afterward from the admin account, via the app's admin API
-(no UI for this yet — it's reachable at `/api/admin/users`, gated by `is_admin`).
+(no UI for this yet — gated by `is_admin`): `GET /api/admin/users` lists accounts,
+`POST /api/admin/users` creates one, `PATCH /api/admin/users/{id}` updates display name,
+password, admin flag, or active flag, and `DELETE /api/admin/users/{id}` deactivates an
+account (`is_active=false`) rather than hard-deleting it.
 
 ### 3. Frontend build
 
