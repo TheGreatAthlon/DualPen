@@ -25,6 +25,10 @@ import {
   loadFontFamily,
   loadFontSize,
 } from "./settings";
+import { MarkdownPreviewPanel } from "./markdown-preview";
+import { attachDocCollaboratorsList } from "./doc-collaborators";
+import { PresenceRosterPanel } from "./presence-roster";
+import { ShortcutsHelpPanel } from "./shortcuts-help";
 
 const TRASH_FOLDER_NAME = "Trash";
 // Idle threshold after the last keystroke before a peer's isTyping flips back
@@ -45,11 +49,15 @@ let currentCursorListener: monaco.IDisposable | null = null;
 let currentContentListener: monaco.IDisposable | null = null;
 let detachRemoteCursorStyles: (() => void) | null = null;
 let detachPresenceSounds: (() => void) | null = null;
+let detachDocCollaboratorsList: (() => void) | null = null;
 let typingIdleTimer: number | null = null;
 let collaboratorCycler: CollaboratorCycler | null = null;
 let chatPanel: ChatPanel | null = null;
 let quickComposer: QuickComposer | null = null;
 let settingsPanel: SettingsPanel | null = null;
+let markdownPreviewPanel: MarkdownPreviewPanel | null = null;
+let presenceRosterPanel: PresenceRosterPanel | null = null;
+let shortcutsHelpPanel: ShortcutsHelpPanel | null = null;
 // Tracks whether #move-status's live-region text was last set for "moving"
 // or "not moving", so updateTreeToolbar() (which reruns on every arrow-key
 // selection change while a move is pending) only re-announces on the actual
@@ -105,6 +113,8 @@ function teardownSync(): void {
   detachRemoteCursorStyles = null;
   detachPresenceSounds?.();
   detachPresenceSounds = null;
+  detachDocCollaboratorsList?.();
+  detachDocCollaboratorsList = null;
   collaboratorCycler = null;
   chatPanel?.clear();
   currentBinding?.destroy();
@@ -164,6 +174,10 @@ async function openDocument(node: NodeOut): Promise<void> {
       );
       detachRemoteCursorStyles = attachRemoteCursorStyles(sync.awareness);
       detachPresenceSounds = attachPresenceSounds(sync.awareness);
+      const collaboratorsEl = document.querySelector<HTMLElement>("#doc-collaborators");
+      if (collaboratorsEl) {
+        detachDocCollaboratorsList = attachDocCollaboratorsList(sync.awareness, collaboratorsEl);
+      }
       collaboratorCycler = new CollaboratorCycler();
       setLocalAwarenessUser(sync);
       currentCursorListener = monacoEditor.onDidChangeCursorSelection((e) => {
@@ -402,6 +416,7 @@ async function renderApp(): Promise<void> {
         <h1>DualPen</h1>
         <div class="header-right">
           <span id="user-info"></span>
+          <button id="presence-btn" type="button">Who's online</button>
           <button id="logout-btn" type="button">Log out</button>
         </div>
       </header>
@@ -430,6 +445,7 @@ async function renderApp(): Promise<void> {
           <div class="editor-toolbar">
             <span id="editor-title">No document open</span>
             <span id="tab-focus-indicator" role="status">Tab moves focus: OFF</span>
+            <span id="doc-collaborators" role="status"></span>
             <button id="settings-btn" type="button">Settings</button>
             <span id="save-status" role="status"></span>
           </div>
@@ -530,6 +546,9 @@ async function renderApp(): Promise<void> {
   setUpMonaco();
   setUpChat();
   setUpSettings();
+  setUpMarkdownPreview();
+  setUpPresenceRoster();
+  setUpShortcutsHelp();
 
   await refreshTree();
 }
@@ -624,6 +643,35 @@ function setUpSettings(): void {
   });
 }
 
+function setUpMarkdownPreview(): void {
+  // Same guarded-singleton reasoning as setUpSettings()/setUpChat() above:
+  // attaches to document.body outside the #app subtree, so build once.
+  if (!markdownPreviewPanel) {
+    markdownPreviewPanel = new MarkdownPreviewPanel();
+  }
+}
+
+function setUpPresenceRoster(): void {
+  // Same guarded-singleton reasoning as the other panels above.
+  if (!presenceRosterPanel) {
+    presenceRosterPanel = new PresenceRosterPanel({
+      getCurrentUserId: () => currentUser?.id ?? null,
+      getCurrentDocId: () => currentDocument?.id ?? null,
+    });
+  }
+
+  document.querySelector<HTMLButtonElement>("#presence-btn")!.addEventListener("click", () => {
+    presenceRosterPanel?.open();
+  });
+}
+
+function setUpShortcutsHelp(): void {
+  // Same guarded-singleton reasoning as the other panels above.
+  if (!shortcutsHelpPanel) {
+    shortcutsHelpPanel = new ShortcutsHelpPanel();
+  }
+}
+
 function focusEditorPane(): void {
   monacoEditor?.focus();
 }
@@ -694,6 +742,56 @@ window.addEventListener("keydown", (e) => {
   } else {
     quickComposer?.openIfPeersPresent();
   }
+});
+
+// Alt+R: markdown preview of the current document. Registered once at
+// module scope like the other global shortcuts above.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "r" && e.key !== "R") return;
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (!currentModel || !currentDocument) return;
+
+  e.preventDefault();
+  markdownPreviewPanel?.open(currentModel.getValue(), currentDocument.name);
+});
+
+// Alt+W: announce who's online (and what they're editing) to the live
+// region, for screen-reader users who want this without opening the
+// visual roster panel. Registered once at module scope like the others.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "w" && e.key !== "W") return;
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+  e.preventDefault();
+  api
+    .presence()
+    .then((entries) => {
+      const others = entries.filter((p) => p.user_id !== currentUser?.id);
+      if (others.length === 0) {
+        announce("No one else is online.");
+        return;
+      }
+      const parts = others.map((p) =>
+        p.doc_id === currentDocument?.id
+          ? `${p.display_name}, editing this document`
+          : `${p.display_name}, editing ${p.doc_name}`,
+      );
+      announce(`Online now: ${parts.join(". ")}.`);
+    })
+    .catch(() => announce("Could not load who's online."));
+});
+
+// F1 (or Alt+F1 as a fallback, since some browsers/OSes intercept bare F1
+// for their own help before JS ever sees it): keyboard shortcuts help.
+// Registered once at module scope like the other global shortcuts above,
+// so it works regardless of focus location (including when a tree item
+// has focus, since tree.ts's own keydown handler only handles keys on
+// treeitem elements and doesn't claim F1).
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "F1") return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return; // altKey optionally set, both bare and Alt+F1 accepted
+  e.preventDefault();
+  shortcutsHelpPanel?.open();
 });
 
 async function init(): Promise<void> {

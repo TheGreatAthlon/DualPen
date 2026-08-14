@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from server.app.db import init_db
-from server.app.routers import admin, auth, documents, sync
+from server.app.routers import admin, auth, documents, presence, sync
 
 
 @asynccontextmanager
@@ -36,4 +36,5 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(presence.router, prefix="/api")
 app.include_router(sync.router)

@@ -344,6 +344,11 @@ body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded="true"]::b
   white-space: nowrap;
 }
 
+#doc-collaborators {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 /* --- Chat --- */
 
 .chat-dialog {
@@ -545,4 +550,162 @@ body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded="true"]::b
   justify-content: flex-end;
   padding: 12px 20px;
   border-top: 1px solid var(--border);
+}
+
+/* --- Markdown preview --- */
+
+.markdown-preview-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  width: min(720px, 90vw);
+  height: min(640px, 85vh);
+}
+
+.markdown-preview-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.markdown-preview-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.markdown-preview-dialog h2 {
+  margin: 0;
+  padding: 16px 20px 8px;
+  font-size: 16px;
+}
+
+.markdown-preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-preview-body :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview-body :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-preview-body pre {
+  overflow-x: auto;
+  padding: 10px;
+  background: var(--pane-bg);
+  border-radius: 6px;
+}
+
+.markdown-preview-body code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* --- Presence roster --- */
+
+.presence-roster-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  width: min(420px, 90vw);
+  max-height: 80vh;
+}
+
+.presence-roster-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.presence-roster-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.presence-roster-dialog h2 {
+  margin: 0;
+  padding: 16px 20px 8px;
+  font-size: 16px;
+}
+
+.presence-roster-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 20px;
+  list-style: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.presence-roster-list li {
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+/* --- Keyboard shortcuts help --- */
+
+.shortcuts-help-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  width: min(560px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.shortcuts-help-dialog[open] {
+  display: block;
+}
+
+.shortcuts-help-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.shortcuts-help-dialog h2 {
+  margin: 0;
+  padding: 16px 20px 4px;
+  font-size: 16px;
+}
+
+.shortcuts-help-dialog h3 {
+  margin: 12px 20px 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.shortcuts-table {
+  width: calc(100% - 40px);
+  margin: 0 20px 8px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.shortcuts-table td {
+  padding: 4px 0;
+  vertical-align: top;
+}
+
+.shortcuts-table td:first-child {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: 16px;
+}
+
+.shortcuts-table kbd {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--pane-bg);
 }

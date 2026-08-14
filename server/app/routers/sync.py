@@ -42,12 +42,22 @@ _last_flush_at: dict[str, float] = {}
 # happens to finalize the Doc.
 _observers: dict[str, object] = {}
 
-# Enforces "one document open per user" server-side. Maps user id -> the
-# doc_id and live WebSocket of their current connection. A second connection
-# from the same user to a *different* doc_id force-closes the entry found
-# here; the entry is updated/cleared by whichever connection's lifecycle
-# (new connect, or its own disconnect) touches it last.
-_user_open_doc: dict[int, tuple[str, WebSocket]] = {}
+# Enforces "one document open per user" server-side, and doubles as the
+# backing store for the /api/presence endpoint (see presence.py). Maps user
+# id -> (doc_id, display_name, live WebSocket) of their current connection.
+# display_name is cached here (rather than looked up per presence request)
+# since it's already in hand at connect time. A second connection from the
+# same user to a *different* doc_id force-closes the entry found here; the
+# entry is updated/cleared by whichever connection's lifecycle (new connect,
+# or its own disconnect) touches it last.
+_user_open_doc: dict[int, tuple[str, str, WebSocket]] = {}
+
+
+def get_open_docs_by_user() -> dict[int, tuple[str, str]]:
+    """Snapshot of user id -> (doc_id, display_name) for currently-connected
+    users, for the presence endpoint. Excludes the live WebSocket, which
+    presence has no business touching."""
+    return {user_id: (doc_id, display_name) for user_id, (doc_id, display_name, _ws) in _user_open_doc.items()}
 
 
 @asynccontextmanager
@@ -233,7 +243,7 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
 
     prior = _user_open_doc.get(user.id)
     if prior is not None and prior[0] != doc_id:
-        prior_doc_id, prior_ws = prior
+        prior_doc_id, _prior_display_name, prior_ws = prior
         # Closing the *other* connection's WebSocket from here causes its own
         # coroutine (blocked awaiting receive_bytes() inside room.serve()) to
         # observe a "websocket.disconnect" ASGI message and raise
@@ -252,7 +262,7 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
                 prior_doc_id,
             )
 
-    _user_open_doc[user.id] = (doc_id, websocket)
+    _user_open_doc[user.id] = (doc_id, user.display_name, websocket)
 
     room = await _seed_room_from_disk(doc_id, blob_path)
 
@@ -271,7 +281,7 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
         # not clobber it here - whichever connection is current owns cleanup
         # of its own entry.
         current = _user_open_doc.get(user.id)
-        if current is not None and current[1] is websocket:
+        if current is not None and current[2] is websocket:
             del _user_open_doc[user.id]
 
         # Make sure this client's last edits aren't left sitting only in the

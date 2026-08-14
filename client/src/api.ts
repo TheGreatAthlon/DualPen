@@ -78,6 +78,17 @@ export function me(): Promise<CurrentUser> {
   return request("/me");
 }
 
+export interface PresenceEntry {
+  user_id: number;
+  display_name: string;
+  doc_id: string;
+  doc_name: string;
+}
+
+export function presence(): Promise<PresenceEntry[]> {
+  return request("/presence");
+}
+
 export function getTree(): Promise<NodeOut[]> {
   return request("/tree");
 }

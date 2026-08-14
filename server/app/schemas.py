@@ -57,6 +57,13 @@ class NodeOut(BaseModel):
     updated_at: datetime.datetime
 
 
+class PresenceEntry(BaseModel):
+    user_id: int
+    display_name: str
+    doc_id: str
+    doc_name: str
+
+
 class CreateFolderRequest(BaseModel):
     name: str
     parent_id: str | None = None

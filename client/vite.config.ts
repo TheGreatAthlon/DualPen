@@ -16,4 +16,16 @@ export default defineConfig({
       ),
     },
   },
+  server: {
+    // api.ts/sync.ts default to same-origin (window.location.origin + /api,
+    // /ws/doc/...) so the built app needs no config behind a same-origin
+    // reverse proxy in production. `npm run dev` has no such proxy in front
+    // of it though, so without this the dev server itself 404s on /api and
+    // /ws requests instead of forwarding them to the backend. Only used in
+    // dev - vite build/preview don't run this proxy at all.
+    proxy: {
+      "/api": "http://localhost:8000",
+      "/ws": { target: "ws://localhost:8000", ws: true },
+    },
+  },
 });

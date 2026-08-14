@@ -26,7 +26,11 @@ const DEFAULT_FONT_FAMILY = FONT_CHOICES[0].family;
 const A11Y_SUPPORT_BODY_CLASS = "a11y-support-on";
 
 export function loadAccessibilitySupportPref(): boolean {
-  return window.localStorage.getItem(A11Y_SUPPORT_STORAGE_KEY) === "on";
+  const saved = window.localStorage.getItem(A11Y_SUPPORT_STORAGE_KEY);
+  // No saved preference yet means a first-time user on this browser - default
+  // to on, since most users of this app are screen reader users.
+  if (saved === null) return true;
+  return saved === "on";
 }
 
 export function saveAccessibilitySupportPref(on: boolean): void {

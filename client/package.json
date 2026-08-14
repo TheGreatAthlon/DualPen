@@ -13,6 +13,8 @@
     "vite": "^8.2.0"
   },
   "dependencies": {
+    "dompurify": "^3.4.8",
+    "marked": "^14.0.0",
     "monaco-editor": "^0.56.0",
     "y-monaco": "^0.1.6",
     "y-protocols": "^1.0.7",
