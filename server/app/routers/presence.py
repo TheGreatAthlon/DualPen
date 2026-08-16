@@ -21,6 +21,12 @@ async def get_presence(db: AsyncSession = Depends(get_db)):
             # it rather than fail the whole roster for everyone else.
             continue
         entries.append(
-            PresenceEntry(user_id=user_id, display_name=display_name, doc_id=doc_id, doc_name=node.name)
+            PresenceEntry(
+                user_id=user_id,
+                display_name=display_name,
+                doc_id=doc_id,
+                doc_name=node.name,
+                doc_path=await node_service.get_ancestor_path(db, node),
+            )
         )
     return entries

@@ -88,6 +88,20 @@ async def get_document_node(db: AsyncSession, node_id: str) -> Node:
     return node
 
 
+async def get_ancestor_path(db: AsyncSession, node: Node) -> list[str]:
+    """Ancestor folder names from root to (excluding) node itself, e.g. ["Work", "Projects"]."""
+    path: list[str] = []
+    current_parent_id = node.parent_id
+    while current_parent_id is not None:
+        result = await db.execute(select(Node.name, Node.parent_id).where(Node.id == current_parent_id))
+        row = result.one_or_none()
+        if row is None:
+            break
+        name, current_parent_id = row
+        path.insert(0, name)
+    return path
+
+
 async def get_document_content(db: AsyncSession, node_id: str) -> str:
     node = await get_document_node(db, node_id)
     return docstore.read_document(node.blob_path)

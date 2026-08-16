@@ -61,6 +61,7 @@ button:hover {
 
 button:focus-visible,
 [role="treeitem"]:focus-visible,
+[role="option"]:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--focus);
@@ -646,6 +647,21 @@ body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded="true"]::b
 .presence-roster-list li {
   padding: 6px 0;
   font-size: 14px;
+}
+
+.presence-roster-list li[role="option"] {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.presence-roster-list li[role="option"]:hover {
+  background: var(--accent-bg);
+}
+
+.presence-roster-list li[role="option"][aria-selected="true"] {
+  background: var(--accent-bg);
+  font-weight: 600;
 }
 
 /* --- Keyboard shortcuts help --- */

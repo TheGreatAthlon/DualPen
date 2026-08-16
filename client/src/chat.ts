@@ -4,6 +4,8 @@ import type { ChatMessage } from "./sync";
 export interface ChatPanelCallbacks {
   /** Whether anyone else is currently in the document, per the awareness peer list. */
   hasOtherPeers: () => boolean;
+  /** Whether a document is currently open at all, distinct from hasOtherPeers. */
+  hasDocumentOpen: () => boolean;
   onSend: (body: string) => void;
   announce: (message: string) => void;
 }
@@ -63,6 +65,10 @@ export class ChatPanel {
   private trySend(): void {
     const body = this.composeInput.value.trim();
     if (!body) return;
+    if (!this.callbacks.hasDocumentOpen()) {
+      this.callbacks.announce("No document is open.");
+      return;
+    }
     if (!this.callbacks.hasOtherPeers()) {
       this.callbacks.announce("No one else is editing this document.");
       return;
@@ -148,11 +154,17 @@ export class QuickComposer {
   private input: HTMLInputElement;
   private callbacks: {
     hasOtherPeers: () => boolean;
+    hasDocumentOpen: () => boolean;
     onSend: (body: string) => void;
     announce: (message: string) => void;
   };
 
-  constructor(callbacks: { hasOtherPeers: () => boolean; onSend: (body: string) => void; announce: (message: string) => void }) {
+  constructor(callbacks: {
+    hasOtherPeers: () => boolean;
+    hasDocumentOpen: () => boolean;
+    onSend: (body: string) => void;
+    announce: (message: string) => void;
+  }) {
     this.callbacks = callbacks;
 
     this.dialog = document.createElement("dialog");
@@ -181,6 +193,10 @@ export class QuickComposer {
    * announces immediately, per the plan's "abort with an announced message
    * rather than sending into the void" F2 behavior. */
   openIfPeersPresent(): void {
+    if (!this.callbacks.hasDocumentOpen()) {
+      this.callbacks.announce("No document is open.");
+      return;
+    }
     if (!this.callbacks.hasOtherPeers()) {
       this.callbacks.announce("No one else is editing this document.");
       return;

@@ -62,6 +62,7 @@ class PresenceEntry(BaseModel):
     display_name: str
     doc_id: str
     doc_name: str
+    doc_path: list[str]
 
 
 class CreateFolderRequest(BaseModel):

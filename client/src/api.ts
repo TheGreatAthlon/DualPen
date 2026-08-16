@@ -83,6 +83,7 @@ export interface PresenceEntry {
   display_name: string;
   doc_id: string;
   doc_name: string;
+  doc_path: string[];
 }
 
 export function presence(): Promise<PresenceEntry[]> {

@@ -493,6 +493,10 @@ export class FileTree {
     return this.activeId ? (this.nodesById.get(this.activeId) ?? null) : null;
   }
 
+  getNode(nodeId: string): NodeOut | null {
+    return this.nodesById.get(nodeId) ?? null;
+  }
+
   /** Moves DOM focus to the current roving-tabindex item (or the first visible item if none is active yet/visible). */
   focusTree(): void {
     this.resolveVisibleTarget(this.activeId)?.focus();

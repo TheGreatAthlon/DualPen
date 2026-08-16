@@ -35,6 +35,10 @@ const TRASH_FOLDER_NAME = "Trash";
 // to false, matching the "clean boolean edge, not a raw timestamp" design so
 // peers don't each have to interpret staleness themselves.
 const TYPING_IDLE_MS = 1500;
+// Slightly longer than the presence roster's 5s poll since tree changes are
+// rarer and this interval runs continuously for the whole logged-in session,
+// not just while a dialog is open.
+const TREE_POLL_INTERVAL_MS = 8000;
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -58,6 +62,7 @@ let settingsPanel: SettingsPanel | null = null;
 let markdownPreviewPanel: MarkdownPreviewPanel | null = null;
 let presenceRosterPanel: PresenceRosterPanel | null = null;
 let shortcutsHelpPanel: ShortcutsHelpPanel | null = null;
+let treeRefreshTimer: number | null = null;
 // Tracks whether #move-status's live-region text was last set for "moving"
 // or "not moving", so updateTreeToolbar() (which reruns on every arrow-key
 // selection change while a move is pending) only re-announces on the actual
@@ -195,6 +200,8 @@ async function openDocument(node: NodeOut): Promise<void> {
     (closeCode) => {
       if (generation !== openGeneration) return;
       teardownSync();
+      currentDocument = null;
+      titleEl.textContent = "No document open";
       setEditorModel("");
       statusEl.textContent =
         closeCode === CLOSE_REPLACED_BY_NEWER_SESSION
@@ -447,6 +454,17 @@ async function refreshTree(focusId?: string): Promise<void> {
   fileTree.render(flat, focusId);
 }
 
+function setUpTreePolling(): void {
+  // Guarded singleton like setUpChat/setUpSettings/etc. above - renderApp()
+  // re-runs on every login, and stacking a second setInterval would double
+  // (then triple, ...) the refresh rate on repeated logins in the same page
+  // session. FileTree.render() already preserves expanded/active/focus state
+  // across re-renders (see tree.ts), so polling never disrupts an
+  // in-progress rename/move or steals focus.
+  if (treeRefreshTimer !== null) return;
+  treeRefreshTimer = window.setInterval(() => void refreshTree(), TREE_POLL_INTERVAL_MS);
+}
+
 async function renderApp(): Promise<void> {
   app.innerHTML = `
     <div class="app-shell">
@@ -507,6 +525,10 @@ async function renderApp(): Promise<void> {
     currentModel = null;
     monacoEditor?.dispose();
     monacoEditor = null;
+    if (treeRefreshTimer !== null) {
+      window.clearInterval(treeRefreshTimer);
+      treeRefreshTimer = null;
+    }
     renderLogin();
   });
 
@@ -587,6 +609,7 @@ async function renderApp(): Promise<void> {
   setUpMarkdownPreview();
   setUpPresenceRoster();
   setUpShortcutsHelp();
+  setUpTreePolling();
 
   await refreshTree();
 }
@@ -608,6 +631,7 @@ function setUpChat(): void {
   if (!chatPanel) {
     chatPanel = new ChatPanel({
       hasOtherPeers: hasOtherPeersInCurrentDoc,
+      hasDocumentOpen: () => currentDocument !== null,
       onSend: (body) => currentSync?.sendChatMessage(body),
       announce,
     });
@@ -615,6 +639,7 @@ function setUpChat(): void {
   if (!quickComposer) {
     quickComposer = new QuickComposer({
       hasOtherPeers: hasOtherPeersInCurrentDoc,
+      hasDocumentOpen: () => currentDocument !== null,
       onSend: (body) => currentSync?.sendChatMessage(body),
       announce,
     });
@@ -695,6 +720,9 @@ function setUpPresenceRoster(): void {
     presenceRosterPanel = new PresenceRosterPanel({
       getCurrentUserId: () => currentUser?.id ?? null,
       getCurrentDocId: () => currentDocument?.id ?? null,
+      getNodeById: (id) => fileTree?.getNode(id) ?? null,
+      onOpenDocument: (node) => void openDocument(node),
+      announce,
     });
   }
 
@@ -772,7 +800,7 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keydown", (e) => {
   if (e.key !== "F2") return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (!currentSync) return;
+  if (!currentSync || !currentDocument) return;
 
   // The file tree has its own F2 handler (rename) scoped to its treeitems;
   // when focus is there, this global handler must stand down instead of
@@ -799,30 +827,17 @@ window.addEventListener("keydown", (e) => {
   markdownPreviewPanel?.open(currentModel.getValue(), currentDocument.name);
 });
 
-// Alt+W: announce who's online (and what they're editing) to the live
-// region, for screen-reader users who want this without opening the
-// visual roster panel. Registered once at module scope like the others.
+// Alt+W: who's online. Announces "No one else is online." to the live
+// region when solo (so screen-reader users get a quick spoken answer without
+// a dialog popping up for nothing); otherwise opens the navigable roster
+// panel instead of just reading a summary aloud. Registered once at module
+// scope like the others.
 window.addEventListener("keydown", (e) => {
   if (e.key !== "w" && e.key !== "W") return;
   if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
   e.preventDefault();
-  api
-    .presence()
-    .then((entries) => {
-      const others = entries.filter((p) => p.user_id !== currentUser?.id);
-      if (others.length === 0) {
-        announce("No one else is online.");
-        return;
-      }
-      const parts = others.map((p) =>
-        p.doc_id === currentDocument?.id
-          ? `${p.display_name}, editing this document`
-          : `${p.display_name}, editing ${p.doc_name}`,
-      );
-      announce(`Online now: ${parts.join(". ")}.`);
-    })
-    .catch(() => announce("Could not load who's online."));
+  void presenceRosterPanel?.openOrAnnounceIfEmpty();
 });
 
 // F1 (or Alt+F1 as a fallback, since some browsers/OSes intercept bare F1
