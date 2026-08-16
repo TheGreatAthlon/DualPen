@@ -39,6 +39,15 @@ export function listJumpablePeers(awareness: Awareness): CollaboratorPeer[] {
 }
 
 /**
+ * Same as listJumpablePeers, but filtered to peers whose cursor is on the
+ * given line. Mirrors presence-sounds.ts's deriveState() same-line check
+ * (exact line-number equality, no tolerance band).
+ */
+export function listPeersOnLine(awareness: Awareness, lineNumber: number): CollaboratorPeer[] {
+  return listJumpablePeers(awareness).filter((p) => p.lineNumber === lineNumber);
+}
+
+/**
  * Tracks the cycle position for repeated Alt+J presses within one document
  * session. A fresh instance per openDocument() call (like openGeneration)
  * means switching documents naturally resets the cycle.

@@ -1,26 +1,34 @@
 import type { Awareness } from "y-protocols/awareness";
-import { listJumpablePeers } from "./jump-to-collaborator";
+import { listPeersOnLine } from "./jump-to-collaborator";
 
 /**
- * Renders "Editing with: ..." into the given element from awareness state,
- * re-rendering on every awareness change. Mirrors attachPresenceSounds()'s
- * shape (attach on doc open, call the returned detach function in
- * teardownSync()) but drives a visible/screen-reader-readable list instead
- * of audio.
+ * Renders "Editing with: ..." into the given element, but only announces
+ * peers on the local user's current line, and only when notifyCursorMoved()
+ * is called for a vertical (Up/Down arrow) move - not on every awareness
+ * change, which would otherwise fire (and re-announce via role="status") for
+ * every keystroke and every remote peer's own cursor movement. See
+ * bindVerticalArrowTracking() in main.ts for how vertical moves are
+ * detected.
  */
-export function attachDocCollaboratorsList(awareness: Awareness, el: HTMLElement): () => void {
-  function render(): void {
-    const peers = listJumpablePeers(awareness);
-    el.textContent =
-      peers.length === 0 ? "" : `Editing with: ${peers.map((p) => p.name).join(", ")}`;
+export interface DocCollaboratorsList {
+  notifyCursorMoved: (localLineNumber: number, wasVertical: boolean) => void;
+  detach: () => void;
+}
+
+export function attachDocCollaboratorsList(
+  awareness: Awareness,
+  el: HTMLElement,
+): DocCollaboratorsList {
+  function notifyCursorMoved(localLineNumber: number, wasVertical: boolean): void {
+    if (!wasVertical) return;
+    const peers = listPeersOnLine(awareness, localLineNumber);
+    el.textContent = peers.length === 0 ? "" : `Editing with: ${peers.map((p) => p.name).join(", ")}`;
   }
 
-  const onChange = () => render();
-  awareness.on("change", onChange);
-  render();
-
-  return () => {
-    awareness.off("change", onChange);
-    el.textContent = "";
+  return {
+    notifyCursorMoved,
+    detach: () => {
+      el.textContent = "";
+    },
   };
 }

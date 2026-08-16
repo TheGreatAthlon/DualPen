@@ -34,7 +34,7 @@ import {
   loadFontSize,
 } from "./settings";
 import { MarkdownPreviewPanel } from "./markdown-preview";
-import { attachDocCollaboratorsList } from "./doc-collaborators";
+import { attachDocCollaboratorsList, type DocCollaboratorsList } from "./doc-collaborators";
 import { PresenceRosterPanel } from "./presence-roster";
 import { ShortcutsHelpPanel } from "./shortcuts-help";
 
@@ -61,7 +61,12 @@ let currentCursorListener: monaco.IDisposable | null = null;
 let currentContentListener: monaco.IDisposable | null = null;
 let detachRemoteCursorStyles: (() => void) | null = null;
 let detachPresenceSounds: (() => void) | null = null;
-let detachDocCollaboratorsList: (() => void) | null = null;
+let docCollaboratorsList: DocCollaboratorsList | null = null;
+// Set by bindVerticalArrowTracking() immediately before triggering an
+// Up/Down cursor-move command, then read-and-cleared in the
+// onDidChangeCursorSelection handler below, so only that one move counts as
+// vertical (not e.g. a Left/Right press arriving right after).
+let lastCursorMoveWasVertical = false;
 let typingIdleTimer: number | null = null;
 let collaboratorCycler: CollaboratorCycler | null = null;
 let chatPanel: ChatPanel | null = null;
@@ -126,8 +131,9 @@ function teardownSync(): void {
   detachRemoteCursorStyles = null;
   detachPresenceSounds?.();
   detachPresenceSounds = null;
-  detachDocCollaboratorsList?.();
-  detachDocCollaboratorsList = null;
+  docCollaboratorsList?.detach();
+  docCollaboratorsList = null;
+  lastCursorMoveWasVertical = false;
   collaboratorCycler = null;
   chatPanel?.clear();
   currentBinding?.destroy();
@@ -189,12 +195,16 @@ async function openDocument(node: NodeOut): Promise<void> {
       detachPresenceSounds = attachPresenceSounds(sync.awareness);
       const collaboratorsEl = document.querySelector<HTMLElement>("#doc-collaborators");
       if (collaboratorsEl) {
-        detachDocCollaboratorsList = attachDocCollaboratorsList(sync.awareness, collaboratorsEl);
+        docCollaboratorsList = attachDocCollaboratorsList(sync.awareness, collaboratorsEl);
       }
       collaboratorCycler = new CollaboratorCycler();
       setLocalAwarenessUser(sync);
       currentCursorListener = monacoEditor.onDidChangeCursorSelection((e) => {
-        setLocalAwarenessCursor(sync, e.selection.getPosition(), isTyping());
+        const position = e.selection.getPosition();
+        setLocalAwarenessCursor(sync, position, isTyping());
+        const wasVertical = lastCursorMoveWasVertical;
+        lastCursorMoveWasVertical = false;
+        docCollaboratorsList?.notifyCursorMoved(position.lineNumber, wasVertical);
       });
       currentContentListener = monacoEditor.onDidChangeModelContent(() => {
         markTyping(sync);
@@ -684,6 +694,7 @@ function setUpMonaco(): void {
   });
 
   bindCtrlArrowWordNavigation(monacoEditor);
+  bindVerticalArrowTracking(monacoEditor);
 }
 
 // Monaco's default Ctrl+Left/Right keybinding for cursorWordEndLeft/Right
@@ -718,6 +729,27 @@ function bindCtrlArrowWordNavigation(editor: monaco.editor.IStandaloneCodeEditor
     monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow,
     "cursorWordStartRightSelect",
   );
+}
+
+// Monaco's onDidChangeCursorSelection event doesn't say which key caused the
+// move, so the "Editing with:" announcement (which should only fire for
+// Up/Down navigation, not every cursor move - see doc-collaborators.ts)
+// can't tell vertical moves apart from any other kind from the event alone.
+// This binds Up/Down (plain and Shift-extended) directly, setting a flag
+// immediately before triggering Monaco's own vertical-move command, which
+// the very next onDidChangeCursorSelection firing reads then clears.
+function bindVerticalArrowTracking(editor: monaco.editor.IStandaloneCodeEditor): void {
+  const bind = (keybinding: number, commandId: string) => {
+    editor.addCommand(keybinding, () => {
+      lastCursorMoveWasVertical = true;
+      editor.trigger("verticalNavigation", commandId, null);
+    });
+  };
+
+  bind(monaco.KeyCode.UpArrow, "cursorUp");
+  bind(monaco.KeyCode.DownArrow, "cursorDown");
+  bind(monaco.KeyMod.Shift | monaco.KeyCode.UpArrow, "cursorUpSelect");
+  bind(monaco.KeyMod.Shift | monaco.KeyCode.DownArrow, "cursorDownSelect");
 }
 
 function updateTabFocusIndicator(on: boolean): void {
