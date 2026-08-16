@@ -1,6 +1,14 @@
 import "./style.css";
 import "./monaco-setup";
 import * as monaco from "monaco-editor/editor/editor.api.js";
+// monaco-editor/editor/editor.api.js is Monaco's bare API surface - since
+// 0.56 most editing commands (word navigation, clipboard, find,
+// multicursor, etc.) are opt-in "feature" modules that self-register their
+// commands and default keybindings only once imported. Without this,
+// Ctrl+Left/Right (and Ctrl+Shift+Left/Right, Ctrl+Delete/Backspace) are
+// silently no-ops: the keydown reaches the browser, but no command exists
+// to run, on any browser or OS.
+import "monaco-editor/features/wordOperations/register.js";
 import { MonacoBinding } from "y-monaco";
 import * as api from "./api";
 import type { NodeOut } from "./api";
@@ -674,6 +682,42 @@ function setUpMonaco(): void {
   monacoEditor.addCommand(monaco.KeyCode.F6, () => {
     focusTreePane();
   });
+
+  bindCtrlArrowWordNavigation(monacoEditor);
+}
+
+// Monaco's default Ctrl+Left/Right keybinding for cursorWordEndLeft/Right
+// carries a kbExpr of `textInputFocus && !(accessibilityModeEnabled &&
+// isWindows)` (see monaco-editor's wordOperations.js), deferring instead to
+// cursorWordAccessibilityLeft/Right - a variant tuned to match what NVDA
+// expects - whenever accessibility support is on and the OS is Windows. But
+// that replacement command has no keybinding registered anywhere in
+// monaco-editor at all (confirmed: triggering it directly works fine, but
+// no Ctrl+Arrow keypress ever reaches it), so on Windows with accessibility
+// support on, Ctrl+Left/Right's keydown reaches the browser but never
+// resolves to any command - nothing moves. Once Control is released, a
+// queued unmodified arrow keypress finally moves the cursor by one
+// character, which reads as a "snap back". This binds Ctrl+Left/Right (and
+// Ctrl+Shift+Left/Right for extending the selection) directly to the plain
+// word commands, bypassing Monaco's self-disabling default entirely so the
+// keys work regardless of accessibility mode or OS.
+function bindCtrlArrowWordNavigation(editor: monaco.editor.IStandaloneCodeEditor): void {
+  const bind = (keybinding: number, commandId: string) => {
+    editor.addCommand(keybinding, () => {
+      editor.trigger("wordNavigation", commandId, null);
+    });
+  };
+
+  bind(monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow, "cursorWordStartLeft");
+  bind(monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow, "cursorWordStartRight");
+  bind(
+    monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow,
+    "cursorWordStartLeftSelect",
+  );
+  bind(
+    monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow,
+    "cursorWordStartRightSelect",
+  );
 }
 
 function updateTabFocusIndicator(on: boolean): void {
