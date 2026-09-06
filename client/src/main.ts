@@ -9,6 +9,11 @@ import * as monaco from "monaco-editor/editor/editor.api.js";
 // silently no-ops: the keydown reaches the browser, but no command exists
 // to run, on any browser or OS.
 import "monaco-editor/features/wordOperations/register.js";
+// Same opt-in pattern: registers the find controller and its default
+// keybindings - Ctrl+F (find), Ctrl+H (find & replace), F3/Shift+F3 (next/
+// previous match), plus the find widget. This build's register.js also
+// patches the widget so its inputs drop out of the tab order while hidden.
+import "monaco-editor/features/find/register.js";
 import { MonacoBinding } from "y-monaco";
 import * as api from "./api";
 import type { NodeOut } from "./api";
@@ -693,6 +698,15 @@ function setUpMonaco(): void {
     focusTreePane();
   });
 
+  // Monaco's find feature binds Alt+R (toggle regex in the find widget) once
+  // imported, which swallows our window-level Alt+R markdown-preview shortcut
+  // whenever the editor has focus. Re-bind it here so it works from the
+  // editor too - same reasoning as F6 above.
+  monacoEditor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyR, () => {
+    if (!currentModel || !currentDocument) return;
+    markdownPreviewPanel?.open(currentModel.getValue(), currentDocument.name);
+  });
+
   bindCtrlArrowWordNavigation(monacoEditor);
   bindVerticalArrowTracking(monacoEditor);
 }
@@ -784,9 +798,9 @@ function setUpSettings(): void {
 
 function setUpMarkdownPreview(): void {
   // Same guarded-singleton reasoning as setUpSettings()/setUpChat() above:
-  // attaches to document.body outside the #app subtree, so build once.
+  // holds a stable window name for its preview tab, so build once.
   if (!markdownPreviewPanel) {
-    markdownPreviewPanel = new MarkdownPreviewPanel();
+    markdownPreviewPanel = new MarkdownPreviewPanel({ announce });
   }
 }
 

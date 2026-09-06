@@ -553,59 +553,8 @@ body:not(.a11y-support-on) .file-tree [role="treeitem"][aria-expanded="true"]::b
   border-top: 1px solid var(--border);
 }
 
-/* --- Markdown preview --- */
-
-.markdown-preview-dialog {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0;
-  color: var(--text);
-  background: var(--bg);
-  width: min(720px, 90vw);
-  height: min(640px, 85vh);
-}
-
-.markdown-preview-dialog[open] {
-  display: flex;
-  flex-direction: column;
-}
-
-.markdown-preview-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.markdown-preview-dialog h2 {
-  margin: 0;
-  padding: 16px 20px 8px;
-  font-size: 16px;
-}
-
-.markdown-preview-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 20px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-.markdown-preview-body :first-child {
-  margin-top: 0;
-}
-
-.markdown-preview-body :last-child {
-  margin-bottom: 0;
-}
-
-.markdown-preview-body pre {
-  overflow-x: auto;
-  padding: 10px;
-  background: var(--pane-bg);
-  border-radius: 6px;
-}
-
-.markdown-preview-body code {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-}
+/* Markdown preview (Alt+R) opens in its own browser tab with a self-contained
+   document; see markdown-preview.ts. No in-app styles are needed for it. */
 
 /* --- Presence roster --- */
 
