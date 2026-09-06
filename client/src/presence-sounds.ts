@@ -23,6 +23,15 @@ const ELSEWHERE_CLICK_MIN_INTERVAL_MS = 900;
 // up-to-~15s gap or this reads as a spurious leave+join.
 const LEAVE_DEBOUNCE_MS = 16000;
 
+// When you open a doc, the peers already in it arrive as awareness state
+// shortly after (and sometimes across more than one frame) - not
+// synchronously with attach. Anyone appearing within this window of attach is
+// treated as "already here" (no join chime); only appearances after it count
+// as real joins. Within the first ~1.5s you also can't meaningfully tell
+// "was already here" from "joined right after me" - treating both as baseline
+// is the behavior we want anyway.
+const BASELINE_SETTLE_MS = 1500;
+
 const SOUND_BASE = "/assets/sounds";
 
 type PresenceState = "same-line-typing" | "same-line-idle" | "elsewhere-typing" | "silent";
@@ -161,10 +170,13 @@ export function attachPresenceSounds(awareness: Awareness): () => void {
   let knownUserIds = new Set<number>();
   const pendingLeaves = new Map<number, ReturnType<typeof setTimeout>>();
   let destroyed = false;
-  // The first render() reflects peers already present when we opened the
-  // doc - those aren't "joins" and shouldn't chime. Only renders after this
-  // baseline snapshot treat a newly-appearing user as a real join.
-  let baselineEstablished = false;
+  // The peers already present when we open the doc trickle in as awareness
+  // state over the first fraction of a second after attach, not all at once
+  // on the first render. So instead of a single "first render is the
+  // baseline" flag, treat every render within BASELINE_SETTLE_MS of attach as
+  // baseline: keep re-seeding knownUserIds from it silently, and only start
+  // chiming joins/leaves once that window has passed.
+  const attachedAt = Date.now();
 
   function stopLoop(playback: PeerPlayback): void {
     if (playback.loopSource) {
@@ -222,10 +234,9 @@ export function attachPresenceSounds(awareness: Awareness): () => void {
       if (peerState.user) currentUserIds.add(peerState.user.id);
     }
 
-    const isFirstRender = !baselineEstablished;
-    baselineEstablished = true;
+    const inBaselineWindow = Date.now() - attachedAt < BASELINE_SETTLE_MS;
 
-    if (!isFirstRender) {
+    if (!inBaselineWindow) {
       for (const userId of knownUserIds) {
         if (currentUserIds.has(userId) || pendingLeaves.has(userId)) continue;
         // Hold the "left" chime briefly rather than playing it immediately,
@@ -289,10 +300,15 @@ export function attachPresenceSounds(awareness: Awareness): () => void {
   const onChange = () => void render();
   awareness.on("change", onChange);
   void render();
+  // One render right as the baseline window closes, so knownUserIds reflects
+  // the settled roster even if no awareness "change" happens to land right
+  // after it - the next real join/leave is then diffed against the right set.
+  const settleTimer = setTimeout(() => void render(), BASELINE_SETTLE_MS);
 
   return () => {
     destroyed = true;
     awareness.off("change", onChange);
+    clearTimeout(settleTimer);
     for (const playback of peers.values()) stopLoop(playback);
     peers.clear();
     for (const timer of pendingLeaves.values()) clearTimeout(timer);

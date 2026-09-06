@@ -210,17 +210,21 @@ async function main() {
   {
     // Mirrors attachPresenceSounds()'s render(): tracked by user id (not
     // clientID, since a reconnect mints a fresh clientID for the same
-    // person), first pass establishes a baseline (no chimes), and a "left"
-    // chime is held for LEAVE_DEBOUNCE_MS so a same-user reappearance in
-    // that window (a reconnect, or y-protocols' own ~15s idle-peer
-    // drop/keepalive cycle) cancels it instead of playing left+joined.
+    // person), every render within BASELINE_SETTLE_MS of attach is baseline
+    // (no chimes - peers already in the doc trickle in over that window),
+    // and a "left" chime is held for LEAVE_DEBOUNCE_MS so a same-user
+    // reappearance in that window (a reconnect, or y-protocols' own ~15s
+    // idle-peer drop/keepalive cycle) cancels it instead of playing
+    // left+joined.
     const LEAVE_DEBOUNCE_MS = 16000;
+    const BASELINE_SETTLE_MS = 1500;
 
     function simulate(snapshots) {
       // snapshots: [{ tMs, states: Map<clientId, {user?: {id}}> }, ...]
+      // tMs is elapsed time since attach; snapshots at tMs < BASELINE_SETTLE_MS
+      // just seed the baseline silently.
       let knownUserIds = new Set();
       const pendingLeaves = new Map(); // userId -> fireAtMs
-      let baselineEstablished = false;
       const events = [];
 
       function flushDueTimers(nowMs) {
@@ -236,10 +240,9 @@ async function main() {
         flushDueTimers(tMs);
 
         const currentUserIds = new Set([...states.values()].filter((s) => s.user).map((s) => s.user.id));
-        const isFirstRender = !baselineEstablished;
-        baselineEstablished = true;
+        const inBaselineWindow = tMs < BASELINE_SETTLE_MS;
 
-        if (!isFirstRender) {
+        if (!inBaselineWindow) {
           for (const userId of knownUserIds) {
             if (currentUserIds.has(userId) || pendingLeaves.has(userId)) continue;
             pendingLeaves.set(userId, tMs + LEAVE_DEBOUNCE_MS);
@@ -262,9 +265,10 @@ async function main() {
     // Case A: genuine join then genuine leave (no reconnect involved).
     const eventsA = simulate([
       { tMs: 0, states: new Map([[10, u(1)]]) }, // baseline: user 1 already present
-      { tMs: 100, states: new Map([[10, u(1)], [11, u(2)]]) }, // user 2 joins
-      { tMs: 200, states: new Map([[11, u(2)]]) }, // user 1's clientID disappears
-      { tMs: 200 + LEAVE_DEBOUNCE_MS + 1000, states: new Map([[11, u(2)]]) }, // still gone well past the debounce
+      { tMs: 500, states: new Map([[10, u(1)]]) }, // still within the settle window - no-op
+      { tMs: 2000, states: new Map([[10, u(1)], [11, u(2)]]) }, // user 2 joins, after the window
+      { tMs: 2100, states: new Map([[11, u(2)]]) }, // user 1's clientID disappears
+      { tMs: 2100 + LEAVE_DEBOUNCE_MS + 1000, states: new Map([[11, u(2)]]) }, // still gone well past the debounce
     ]);
     ok(
       "genuine join fires exactly one joined event, baseline peer doesn't",
@@ -284,6 +288,18 @@ async function main() {
       { tMs: 40000, states: new Map([[22, u(1)], [21, u(2)]]) }, // long after - nothing pending, no event should fire
     ]);
     ok("same-user reconnect within the debounce window fires no left or joined event", eventsB.length === 0);
+
+    // Case C: the roster of peers already in the doc arrives across several
+    // renders, all within the settle window (the bug this window fixes: the
+    // awareness roster frame lands after sync, sometimes split over frames).
+    // None of them should chime.
+    const eventsC = simulate([
+      { tMs: 0, states: new Map([[30, u(1)]]) }, // attach render: just us seeing user 1 (or noone)
+      { tMs: 120, states: new Map([[30, u(1)], [31, u(2)]]) }, // roster frame 1
+      { tMs: 260, states: new Map([[30, u(1)], [31, u(2)], [32, u(3)]]) }, // roster frame 2
+      { tMs: 3000, states: new Map([[30, u(1)], [31, u(2)], [32, u(3)]]) }, // settled, no change
+    ]);
+    ok("peers already in the doc, arriving across frames within the window, fire no join chimes", eventsC.length === 0);
   }
 
   console.log("\n=== Test 4: jump-to-collaborator peer ordering is deterministic ===");
