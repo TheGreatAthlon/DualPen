@@ -342,3 +342,20 @@ async def test_remote_update_awareness_and_chat_reach_local_client(redis_live_se
     await ws.close()
     await asyncio.sleep(0.5)
     assert await peer.list_presence() == {}
+
+
+async def test_revoked_users_kick_reaches_other_processes():
+    server = fakeredis.FakeServer()
+    a, b = _fake_broadcaster(server), _fake_broadcaster(server)
+    kicked = []
+
+    async def on_kick(user_ids):
+        kicked.append(user_ids)
+
+    b.set_kick_handler(on_kick)
+    await a.start()
+    await b.start()
+    await a.publish_users_revoked([3, 4])
+    assert await _eventually(lambda: kicked == [[3, 4]])
+    await a.stop()
+    await b.stop()

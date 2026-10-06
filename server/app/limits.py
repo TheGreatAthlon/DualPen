@@ -111,6 +111,13 @@ def _enabled() -> bool:
 def _client_ip(request: Request) -> str:
     # request.client is the direct peer; behind a reverse proxy this is
     # the proxy's address unless uvicorn --proxy-headers rewrites it.
+    # COLLAB_EDITOR_TRUST_FORWARDED_FOR=true instead takes the LAST
+    # X-Forwarded-For entry: the one our single trusted proxy appended
+    # ($proxy_add_x_forwarded_for), which a client cannot forge.
+    if os.environ.get("COLLAB_EDITOR_TRUST_FORWARDED_FOR", "").strip().lower() not in ("", *_FALSE):
+        forwarded = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+        if forwarded:
+            return forwarded
     return request.client.host if request.client else "unknown"
 
 
@@ -167,6 +174,14 @@ def refund_login_hit(request: Request) -> None:
     hits = _hits.get(("login", _client_ip(request)))
     if hits:
         hits.pop()
+
+
+async def join_rate_limit(request: Request) -> None:
+    """Per-IP cap on guest joins (each join creates a user row)."""
+    limit = _env_int("COLLAB_EDITOR_JOIN_RATE_LIMIT", 20)
+    if not _enabled() or limit <= 0:
+        return
+    _check(("join", _client_ip(request)), limit)
 
 
 async def admin_rate_limit(

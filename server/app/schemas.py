@@ -28,6 +28,10 @@ class UserOut(BaseModel):
     is_admin: bool
     is_active: bool
     created_at: datetime.datetime
+    is_guest: bool = False
+    guest_doc_id: str | None = None
+    guest_doc_name: str | None = None
+    guest_read_only: bool = False
 
 
 PASSWORD_MIN_LENGTH = 8
@@ -125,3 +129,23 @@ class ChatMessageOut(BaseModel):
 class ImportZipResultOut(BaseModel):
     root: NodeOut
     skipped: list[str]
+
+
+class ShareLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    token: str
+    doc_id: str
+    read_only: bool
+    expires_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+
+
+class CreateShareLinkRequest(BaseModel):
+    read_only: bool = False
+    # None = the link never expires. Expiry only stops new joins; existing guests keep their 24h session.
+    expires_in_hours: int | None = Field(default=None, ge=1, le=8760)
+
+
+class JoinRequest(BaseModel):
+    display_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]

@@ -21,6 +21,7 @@ const WS_BASE =
 
 // Mirrors the backend's custom close codes in server/app/routers/sync.py.
 export const CLOSE_UNAUTHORIZED = 4401;
+export const CLOSE_FORBIDDEN = 4403;
 export const CLOSE_NOT_FOUND = 4404;
 export const CLOSE_REPLACED_BY_NEWER_SESSION = 4409;
 

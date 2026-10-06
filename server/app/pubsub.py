@@ -45,6 +45,7 @@ Handler = Callable[[bytes, bytes], Awaitable[None]]
 ResyncHandler = Callable[[str], Awaitable[None]]
 # (user_id, doc_id) of a user who just opened doc_id on another process.
 ControlHandler = Callable[[int, str], Awaitable[None]]
+KickHandler = Callable[[list[int]], Awaitable[None]]
 
 
 class Broadcaster:
@@ -75,6 +76,12 @@ class Broadcaster:
         pass
 
     async def publish_user_opened(self, user_id: int, doc_id: str) -> None:
+        pass
+
+    def set_kick_handler(self, handler: KickHandler) -> None:
+        pass
+
+    async def publish_users_revoked(self, user_ids: list[int]) -> None:
         pass
 
     async def set_presence(self, user_id: int, doc_id: str, display_name: str) -> None:
@@ -110,12 +117,16 @@ class RedisBroadcaster(Broadcaster):
         self._needs_resync = False
         self._resync_handler: ResyncHandler | None = None
         self._control_handler: ControlHandler | None = None
+        self._kick_handler: KickHandler | None = None
 
     def set_resync_handler(self, handler: ResyncHandler) -> None:
         self._resync_handler = handler
 
     def set_control_handler(self, handler: ControlHandler) -> None:
         self._control_handler = handler
+
+    def set_kick_handler(self, handler: KickHandler) -> None:
+        self._kick_handler = handler
 
     @staticmethod
     def _channel(doc_id: str) -> str:
@@ -181,6 +192,10 @@ class RedisBroadcaster(Broadcaster):
     async def publish_user_opened(self, user_id: int, doc_id: str) -> None:
         body = json.dumps({"user_id": user_id, "doc_id": doc_id}).encode("utf-8")
         self._queue.put_nowait((CONTROL_CHANNEL, self.process_id.encode("ascii") + b"o" + body))
+
+    async def publish_users_revoked(self, user_ids: list[int]) -> None:
+        body = json.dumps({"user_ids": user_ids}).encode("utf-8")
+        self._queue.put_nowait((CONTROL_CHANNEL, self.process_id.encode("ascii") + b"k" + body))
 
     async def _publish_loop(self) -> None:
         while True:
@@ -268,11 +283,12 @@ class RedisBroadcaster(Broadcaster):
             logger.exception("Error handling remote message for doc %s", doc_id)
 
     async def _dispatch_control(self, kind: bytes, payload: bytes) -> None:
-        if kind != b"o" or self._control_handler is None:
-            return
         try:
             body = json.loads(payload)
-            await self._control_handler(int(body["user_id"]), str(body["doc_id"]))
+            if kind == b"k" and self._kick_handler is not None:
+                await self._kick_handler([int(i) for i in body["user_ids"]])
+            elif kind == b"o" and self._control_handler is not None:
+                await self._control_handler(int(body["user_id"]), str(body["doc_id"]))
         except Exception:
             logger.exception("Error handling control message")
 

@@ -6,12 +6,12 @@ import weakref
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pycrdt import Doc, Text, YMessageType, read_message
+from pycrdt import Doc, Text, YMessageType, YSyncMessageType, read_message
 from pycrdt.websocket import WebsocketServer
 from pycrdt.websocket.yroom import YRoom
 
 from server.app import chat_service, docstore, node_service, pubsub
-from server.app.auth import SESSION_COOKIE_NAME, get_user_for_session_token
+from server.app.auth import SESSION_COOKIE_NAME, get_guest_grant, get_user_for_session_token
 from server.app.db import AsyncSessionLocal
 from server.app.models import User
 
@@ -24,10 +24,15 @@ DEBOUNCE_SECONDS = 2.0
 MAX_FLUSH_INTERVAL_SECONDS = 15.0
 
 CLOSE_UNAUTHORIZED = 4401
+CLOSE_FORBIDDEN = 4403
 CLOSE_NOT_FOUND = 4404
 CLOSE_REPLACED_BY_NEWER_SESSION = 4409
 
 MESSAGE_TYPE_CHAT = 0x02
+
+# How often an open connection re-checks that its session (and user) is still valid.
+# This is the backstop for revoke/deactivate/expiry when the cross-process kick is lost.
+REVALIDATE_SECONDS = 30.0
 
 websocket_server = WebsocketServer()
 
@@ -93,6 +98,7 @@ async def get_all_open_docs_by_user() -> dict[int, tuple[str, str]]:
 async def sync_lifespan():
     broadcaster.set_resync_handler(_resync_doc)
     broadcaster.set_control_handler(_handle_user_opened_elsewhere)
+    broadcaster.set_kick_handler(close_user_connections)
     await broadcaster.start()
     try:
         async with websocket_server:
@@ -114,10 +120,12 @@ class FastAPIChannel:
     client claims about its own identity.
     """
 
-    def __init__(self, websocket: WebSocket, doc_id: str, user: User, room: YRoom):
+    def __init__(self, websocket: WebSocket, doc_id: str, user: User, room: YRoom, read_only: bool = False, guest: bool = False):
         self._websocket = websocket
         self._doc_id = doc_id
         self._user = user
+        self._read_only = read_only
+        self._guest = guest
         self.room = room
 
     @property
@@ -134,7 +142,15 @@ class FastAPIChannel:
             except WebSocketDisconnect:
                 raise StopAsyncIteration()
             if message and message[0] == MESSAGE_TYPE_CHAT:
-                await self._handle_chat_frame(message)
+                if not self._read_only:
+                    await self._handle_chat_frame(message)
+                continue
+            if self._guest and message and message[0] == YMessageType.AWARENESS:
+                # Awareness is client-controlled: pin a guest's identity to what the server knows.
+                message = _guest_awareness(message, self._user.id, self._user.display_name)
+                if message is None:
+                    continue
+            if self._read_only and _is_doc_write(message):
                 continue
             if message and message[0] == YMessageType.AWARENESS:
                 # YRoom.serve() fans this out to local clients itself; we only
@@ -195,6 +211,104 @@ class FastAPIChannel:
         # fan-out for awareness messages).
         await _send_to_local_clients(self.room, out_message)
         await broadcaster.publish(self._doc_id, pubsub.KIND_CHAT, out_message)
+
+
+def _is_doc_write(message: bytes) -> bool:
+    """Sync step2 / update frames carry document changes; step1 is only a read request."""
+    return (
+        len(message) > 1
+        and message[0] == YMessageType.SYNC
+        and message[1] in (YSyncMessageType.SYNC_STEP2, YSyncMessageType.SYNC_UPDATE)
+    )
+
+
+def _read_varuint(data: bytes, i: int) -> tuple[int, int]:
+    n = shift = 0
+    while True:
+        byte = data[i]
+        i += 1
+        n |= (byte & 0x7F) << shift
+        shift += 7
+        if byte < 0x80:
+            return n, i
+
+
+def _write_varuint(n: int) -> bytes:
+    out = bytearray()
+    while n > 0x7F:
+        out.append(0x80 | (n & 0x7F))
+        n >>= 7
+    out.append(n)
+    return bytes(out)
+
+
+MAX_GUEST_AWARENESS_BYTES = 4096
+
+
+def _guest_awareness(message: bytes, user_id: int, name: str) -> bytes | None:
+    """Rewrite an awareness frame so every state's `user` is the guest's server-known
+    identity. Returns None (drop the frame) if it is oversized or malformed."""
+    if len(message) > MAX_GUEST_AWARENESS_BYTES:
+        return None
+    try:
+        _length, i = _read_varuint(message, 1)
+        count, i = _read_varuint(message, i)
+        body = bytearray(_write_varuint(count))
+        for _ in range(count):
+            client_id, i = _read_varuint(message, i)
+            clock, i = _read_varuint(message, i)
+            size, i = _read_varuint(message, i)
+            raw = message[i : i + size]
+            if len(raw) != size:
+                return None
+            i += size
+            state = json.loads(raw.decode("utf-8"))
+            if isinstance(state, dict):
+                user = state.get("user")
+                state["user"] = {**(user if isinstance(user, dict) else {}), "id": user_id, "name": name}
+            elif state is not None:  # null = "client went away"
+                return None
+            out = json.dumps(state, separators=(",", ":")).encode("utf-8")
+            body += _write_varuint(client_id) + _write_varuint(clock) + _write_varuint(len(out)) + out
+        return bytes([YMessageType.AWARENESS]) + _write_varuint(len(body)) + bytes(body)
+    except (IndexError, ValueError):
+        return None
+
+
+async def _revalidate_loop(websocket: WebSocket, session_token: str | None) -> None:
+    while True:
+        await asyncio.sleep(REVALIDATE_SECONDS)
+        try:
+            async with AsyncSessionLocal() as db:
+                valid = await get_user_for_session_token(db, session_token) is not None
+        except Exception:
+            logger.exception("Session re-check failed; will retry")
+            continue
+        if not valid:
+            try:
+                await websocket.close(code=CLOSE_FORBIDDEN)
+            except Exception:
+                logger.warning("Failed to close revoked connection")
+            return
+
+
+async def kick_users(user_ids: list[int]) -> None:
+    """Close these users' live connections on every process."""
+    if not user_ids:
+        return
+    await close_user_connections(user_ids)
+    await broadcaster.publish_users_revoked(user_ids)
+
+
+async def close_user_connections(user_ids: list[int]) -> None:
+    """Close live local sockets for these users (e.g. guests of a revoked link)."""
+    for user_id in user_ids:
+        entry = _user_open_doc.get(user_id)
+        if entry is not None:
+            try:
+                await entry[2].close(code=CLOSE_FORBIDDEN)
+            except Exception:
+                logger.warning("Failed to close connection for user %s", user_id)
 
 
 async def _send_to_local_clients(room: YRoom, message: bytes) -> None:
@@ -380,6 +494,12 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
             await websocket.close(code=CLOSE_UNAUTHORIZED)
             return
 
+        grant = await get_guest_grant(db, user)
+        if grant is not None and grant.doc_id != doc_id:
+            await websocket.close(code=CLOSE_FORBIDDEN)
+            return
+        read_only = grant is not None and grant.read_only
+
         try:
             node = await node_service.get_document_node(db, doc_id)
         except node_service.NodeNotFoundError:
@@ -417,14 +537,23 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
 
     room = None
 
+    # A revoke can land between the auth check above and registering in
+    # _user_open_doc (close_user_connections would then miss us): re-check.
+    async with AsyncSessionLocal() as db:
+        still_valid = await get_user_for_session_token(db, session_token) is not None
+
     # WebsocketServer.serve() auto-deletes the room from its registry the
     # instant the last client disconnects (before returning control to us),
     # which would race our own disconnect-triggered flush below. Drive the
     # room directly instead so we control exactly when it's read and torn
     # down: seed -> serve -> persist -> delete, in that order.
+    revalidator = asyncio.ensure_future(_revalidate_loop(websocket, session_token))
     try:
+        if not still_valid:
+            await websocket.close(code=CLOSE_FORBIDDEN)
+            return
         room = await _seed_room_from_disk(doc_id, blob_path)
-        channel = FastAPIChannel(websocket, doc_id, user, room)
+        channel = FastAPIChannel(websocket, doc_id, user, room, read_only, grant is not None)
         await room.serve(channel)
     finally:
         # Only clear/own this user's entry if it still points at *this*
@@ -432,6 +561,7 @@ async def doc_sync(websocket: WebSocket, doc_id: str):
         # overwrote the entry (or, in principle, raced ahead of us), we must
         # not clobber it here - whichever connection is current owns cleanup
         # of its own entry.
+        revalidator.cancel()
         current = _user_open_doc.get(user.id)
         if current is not None and current[2] is websocket:
             del _user_open_doc[user.id]

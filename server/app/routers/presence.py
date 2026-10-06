@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.app import node_service
-from server.app.auth import get_current_user
+from server.app.auth import require_member
 from server.app.db import get_db
 from server.app.routers.sync import get_all_open_docs_by_user
 from server.app.schemas import PresenceEntry
 
-router = APIRouter(tags=["presence"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["presence"], dependencies=[Depends(require_member)])
 
 
 @router.get("/presence", response_model=list[PresenceEntry])

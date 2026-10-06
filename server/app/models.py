@@ -69,3 +69,28 @@ class ChatMessage(Base):
     sent_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True
     )
+
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
+class GuestGrant(Base):
+    """Marks a User row as a guest, scoped to one document."""
+
+    __tablename__ = "guest_grants"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Plain column, not an FK: the link is deleted on revoke but the grant stays (see delete_share_link).
+    link_id: Mapped[str] = mapped_column(String(64), index=True)

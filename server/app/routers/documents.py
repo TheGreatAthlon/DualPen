@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.app import chat_service, import_export_service, node_service
-from server.app.auth import get_current_user
+from server.app import chat_service, import_export_service, node_service, share_service
+from server.app.auth import get_current_user, get_guest_grant, require_member
 from server.app.db import get_db
+from server.app.models import User
 from server.app.schemas import (
     ChatMessageOut,
     CreateDocumentRequest,
@@ -18,7 +19,14 @@ from server.app.schemas import (
     UpdateNodeRequest,
 )
 
-router = APIRouter(tags=["documents"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["documents"], dependencies=[Depends(require_member)])
+# Guests may read chat history for their own document only.
+chat_router = APIRouter(tags=["documents"])
+
+
+@router.get("/config")
+async def get_config():
+    return {"trash_folder_name": share_service.trash_folder_name()}
 
 
 @router.get("/tree", response_model=list[NodeOut])
@@ -62,9 +70,11 @@ async def put_document_content(node_id: str, payload: DocumentContentIn, db: Asy
 @router.patch("/nodes/{node_id}", response_model=NodeOut)
 async def update_node(node_id: str, payload: UpdateNodeRequest, db: AsyncSession = Depends(get_db)):
     try:
-        return await node_service.update_node(
+        node = await node_service.update_node(
             db, node_id, payload.name, payload.parent_id, payload.clear_parent
         )
+        await share_service.end_sharing_if_trashed(db, node)
+        return node
     except node_service.NodeNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except node_service.InvalidParentError as e:
@@ -85,13 +95,17 @@ async def delete_node(node_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/documents/{node_id}/chat", response_model=list[ChatMessageOut])
+@chat_router.get("/documents/{node_id}/chat", response_model=list[ChatMessageOut])
 async def get_document_chat(
     node_id: str,
+    user: User = Depends(get_current_user),
     limit: int = Query(default=chat_service.DEFAULT_LIST_LIMIT, ge=1, le=chat_service.MAX_LIST_LIMIT),
     before_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    grant = await get_guest_grant(db, user)
+    if grant is not None and grant.doc_id != node_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Guests cannot access this resource")
     try:
         await node_service.get_document_node(db, node_id)
     except node_service.NodeNotFoundError as e:

@@ -6,6 +6,7 @@ from server.app.auth import (
     clear_session_cookie,
     create_session,
     get_current_user,
+    describe_user,
     set_session_cookie,
     SESSION_COOKIE_NAME,
 )
@@ -51,5 +52,5 @@ async def logout(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
-    return user
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await describe_user(db, user)

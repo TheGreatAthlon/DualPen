@@ -275,3 +275,18 @@ async def test_import_runtime_error_mapping(normal_user, monkeypatch, message, e
     async with AsyncSessionLocal() as db:
         with pytest.raises(expected):
             await import_export_service.import_zip(db, _zip({"a.txt": "x"}), "z.zip", None)
+
+
+async def test_forwarded_for_keys_the_limit_when_trusted(client, monkeypatch):
+    monkeypatch.setenv("COLLAB_EDITOR_JOIN_RATE_LIMIT", "1")
+    monkeypatch.setenv("COLLAB_EDITOR_TRUST_FORWARDED_FOR", "true")
+    codes = []
+    # Forged leftmost entries are ignored; only the proxy-appended last entry counts.
+    for ip, forged in (("9.9.9.9", "1.1.1.1"), ("9.9.9.9", "2.2.2.2"), ("8.8.8.8", "3.3.3.3")):
+        resp = await client.post(
+            "/api/share/nope/join",
+            json={"display_name": "g"},
+            headers={"X-Forwarded-For": f"{forged}, {ip}"},
+        )
+        codes.append(resp.status_code)
+    assert codes == [404, 429, 404]
